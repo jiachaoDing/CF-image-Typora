@@ -44,8 +44,10 @@ Typora 中选择：
 命令填写：
 
 ```text
-"D:\CursorProject\CF-image-Typora\.venv\Scripts\python.exe" "D:\CursorProject\CF-image-Typora\upload_to_r2.py"
+"<project-path>\\.venv\\Scripts\\python.exe" "<project-path>\\upload_to_r2.py"
 ```
+
+将 `<project-path>` 替换为你自己的项目目录即可。
 
 ### 3. Test
 
@@ -58,3 +60,15 @@ python .\upload_to_r2.py .\test.png
 如果成功，你会得到一行图片 URL。
 
 然后回到 Typora，直接粘贴图片即可。成功后，Markdown 会自动写入 R2 图片地址。
+
+## Optional: Cloudflare imageTransform
+
+如果你想在访问时继续压缩、缩放或自动格式转换，也可以在图片 URL 前加上 Cloudflare 的 `imageTransform` 规则。
+
+示例：
+
+```text
+https://your-image-domain.com/cdn-cgi/image/width=1200,quality=75,format=auto/images/2026/04/10/example.png
+```
+
+适合用在网页展示场景中。
