@@ -75,7 +75,7 @@ def save_compressed_image(
             "method": 6,
         }
     else:
-        raise ValueError(f"不支持压缩输出格式: {output_ext}")
+        raise ValueError(f"Unsupported output format for compression: {output_ext}")
 
     save_image.save(output_path, **save_kwargs)
     return PreparedImage(source_path=source_path, upload_path=output_path, output_ext=output_ext)
@@ -95,9 +95,9 @@ def prepare_single_image(source_path: Path, config: CompressionConfig, temp_dir:
             resized = resize_image(normalized, config)
             prepared = save_compressed_image(source_path, resized, config, temp_dir)
     except UnidentifiedImageError as exc:
-        raise ValueError(f"无法识别图片文件: {source_path}") from exc
+        raise ValueError(f"Cannot identify image file: {source_path}") from exc
     except OSError as exc:
-        raise RuntimeError(f"压缩图片失败: {source_path} -> {exc}") from exc
+        raise RuntimeError(f"Image compression failed: {source_path} -> {exc}") from exc
 
     original_size = source_path.stat().st_size
     compressed_size = prepared.upload_path.stat().st_size

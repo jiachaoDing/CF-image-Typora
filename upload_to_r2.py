@@ -58,7 +58,7 @@ def parse_bool(name: str, default: bool) -> bool:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    raise ValueError(f"{name} 必须是 true/false")
+    raise ValueError(f"{name} must be true or false")
 
 
 def parse_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -69,10 +69,10 @@ def parse_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
     try:
         value = int(raw_value.strip())
     except ValueError as exc:
-        raise ValueError(f"{name} 必须是整数") from exc
+        raise ValueError(f"{name} must be an integer") from exc
 
     if value < minimum or value > maximum:
-        raise ValueError(f"{name} 必须在 {minimum} 到 {maximum} 之间")
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
     return value
 
 
@@ -88,12 +88,12 @@ def load_config(env_path: Path) -> AppConfig:
     }
     missing = [key for key, value in values.items() if not value]
     if missing:
-        raise ValueError(f"缺少必要配置项: {', '.join(missing)}")
+        raise ValueError(f"Missing required config: {', '.join(missing)}")
 
     output_format = os.getenv("OUTPUT_FORMAT", "original").strip().lower() or "original"
     if output_format not in SUPPORTED_OUTPUT_FORMATS:
         supported = ", ".join(sorted(SUPPORTED_OUTPUT_FORMATS))
-        raise ValueError(f"OUTPUT_FORMAT 仅支持: {supported}")
+        raise ValueError(f"OUTPUT_FORMAT must be one of: {supported}")
 
     compression = CompressionConfig(
         enabled=parse_bool("ENABLE_LOCAL_COMPRESS", True),
@@ -132,13 +132,13 @@ def validate_files(file_args: Iterable[str]) -> list[Path]:
     for raw_path in file_args:
         path = Path(raw_path).expanduser()
         if not path.exists():
-            raise FileNotFoundError(f"文件不存在: {path}")
+            raise FileNotFoundError(f"File not found: {path}")
         if not path.is_file():
-            raise ValueError(f"路径不是文件: {path}")
+            raise ValueError(f"Path is not a file: {path}")
         suffix = path.suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS:
             supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
-            raise ValueError(f"不支持的图片格式: {path.name}，仅支持: {supported}")
+            raise ValueError(f"Unsupported image format: {path.name}. Supported: {supported}")
         validated.append(path)
     return validated
 
@@ -167,9 +167,22 @@ def create_s3_client(config: AppConfig):
     )
 
 
+def rollback_uploaded_objects(client, bucket_name: str, object_keys: list[str]) -> list[str]:
+    rollback_failures: list[str] = []
+
+    for object_key in reversed(object_keys):
+        try:
+            client.delete_object(Bucket=bucket_name, Key=object_key)
+        except (BotoCoreError, ClientError):
+            rollback_failures.append(object_key)
+
+    return rollback_failures
+
+
 def upload_images(images: list[PreparedImage], config: AppConfig) -> list[str]:
     client = create_s3_client(config)
     uploaded_urls: list[str] = []
+    uploaded_object_keys: list[str] = []
 
     for image in images:
         object_key = build_object_key(image.output_ext)
@@ -184,8 +197,15 @@ def upload_images(images: list[PreparedImage], config: AppConfig) -> list[str]:
                 ExtraArgs={"ContentType": content_type},
             )
         except (BotoCoreError, ClientError) as exc:
-            raise RuntimeError(f"上传失败: {image.source_path} -> {exc}") from exc
+            rollback_failures = rollback_uploaded_objects(client, config.bucket_name, uploaded_object_keys)
+            if rollback_failures:
+                print(
+                    "Rollback failed for objects: " + ", ".join(rollback_failures),
+                    file=sys.stderr,
+                )
+            raise RuntimeError(f"Upload failed: {image.source_path} -> {exc}") from exc
 
+        uploaded_object_keys.append(object_key)
         uploaded_urls.append(f"{config.public_base_url}/{object_key}")
 
     return uploaded_urls
